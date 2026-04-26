@@ -1,0 +1,62 @@
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 9% 15%, rgba(124, 58, 237, 0.24) 0 6vw, transparent 6.2vw),
+    radial-gradient(circle at 91% 18%, rgba(31, 157, 98, 0.18) 0 5.5vw, transparent 5.8vw),
+    radial-gradient(circle at 14% 82%, rgba(36, 80, 122, 0.2) 0 7vw, transparent 7.2vw),
+    radial-gradient(circle at 86% 78%, rgba(199, 131, 18, 0.18) 0 6vw, transparent 6.3vw),
+    linear-gradient(135deg, #e8edf4 0%, #f7f9fc 46%, #eef3f8 100%);
+  background-attachment: fixed;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+#root::before,
+#root::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+
+#root::before {
+  background:
+    linear-gradient(118deg, transparent 0 9%, rgba(36, 80, 122, 0.18) 9.2% 9.8%, transparent 10% 24%, rgba(124, 58, 237, 0.15) 24.2% 24.8%, transparent 25% 100%),
+    linear-gradient(28deg, transparent 0 14%, rgba(31, 157, 98, 0.14) 14.2% 14.8%, transparent 15% 42%, rgba(199, 131, 18, 0.13) 42.2% 42.8%, transparent 43% 100%);
+}
+
+#root::after {
+  opacity: 0.65;
+  background:
+    radial-gradient(circle at 5% 52%, transparent 0 38px, rgba(36, 80, 122, 0.18) 39px 42px, transparent 43px),
+    radial-gradient(circle at 96% 47%, transparent 0 44px, rgba(124, 58, 237, 0.18) 45px 48px, transparent 49px),
+    radial-gradient(circle at 50% 4%, transparent 0 54px, rgba(31, 157, 98, 0.14) 55px 58px, transparent 59px),
+    radial-gradient(circle at 48% 96%, transparent 0 62px, rgba(199, 131, 18, 0.14) 63px 66px, transparent 67px);
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
