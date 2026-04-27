@@ -52,6 +52,7 @@ class UserProfile(models.Model):
     business = models.ForeignKey(Business, on_delete=models.CASCADE, related_name='members')
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default=ROLE_CASHIER)
     phone = models.CharField(max_length=30, blank=True)
+    branch_shop = models.CharField(max_length=120, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

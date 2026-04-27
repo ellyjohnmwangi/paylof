@@ -10,6 +10,6 @@ class BusinessAdmin(admin.ModelAdmin):
 
 @admin.register(UserProfile)
 class UserProfileAdmin(admin.ModelAdmin):
-    list_display = ('user', 'business', 'role', 'phone', 'updated_at')
+    list_display = ('user', 'business', 'role', 'phone', 'branch_shop', 'updated_at')
     list_filter = ('role', 'business')
-    search_fields = ('user__username', 'user__email', 'business__name', 'phone')
+    search_fields = ('user__username', 'user__email', 'business__name', 'phone', 'branch_shop')

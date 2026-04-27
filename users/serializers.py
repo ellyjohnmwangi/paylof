@@ -18,7 +18,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = UserProfile
-        fields = ['role', 'phone', 'business', 'capabilities']
+        fields = ['role', 'phone', 'branch_shop', 'business', 'capabilities']
 
 
 class CurrentUserSerializer(serializers.ModelSerializer):
@@ -87,6 +87,8 @@ class LoginSerializer(serializers.Serializer):
 class ManagedUserSerializer(serializers.ModelSerializer):
     role = serializers.ChoiceField(choices=UserProfile.ROLE_CHOICES, write_only=True)
     phone = serializers.CharField(max_length=30, allow_blank=True, required=False, write_only=True)
+    branch_shop = serializers.CharField(max_length=120, allow_blank=True, required=False, write_only=True)
+    full_name = serializers.CharField(max_length=300, allow_blank=True, required=False)
     password = serializers.CharField(min_length=8, write_only=True, required=False)
 
     class Meta:
@@ -94,12 +96,14 @@ class ManagedUserSerializer(serializers.ModelSerializer):
         fields = [
             'id',
             'username',
+            'full_name',
             'email',
             'first_name',
             'last_name',
             'is_active',
             'role',
             'phone',
+            'branch_shop',
             'password',
         ]
         read_only_fields = ['id']
@@ -107,8 +111,10 @@ class ManagedUserSerializer(serializers.ModelSerializer):
     def to_representation(self, instance):
         data = super().to_representation(instance)
         profile = getattr(instance, 'profile', None)
+        data['full_name'] = instance.get_full_name()
         data['role'] = profile.role if profile else ''
         data['phone'] = profile.phone if profile else ''
+        data['branch_shop'] = profile.branch_shop if profile else ''
         return data
 
     def validate_username(self, value):
@@ -131,20 +137,40 @@ class ManagedUserSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({'password': 'Password is required for new users.'})
         return attrs
 
+    def _apply_full_name(self, attrs):
+        full_name = attrs.pop('full_name', None)
+        if full_name is None:
+            return attrs
+
+        names = full_name.strip().split()
+        attrs['first_name'] = names[0] if names else ''
+        attrs['last_name'] = ' '.join(names[1:]) if len(names) > 1 else ''
+        return attrs
+
     @transaction.atomic
     def create(self, validated_data):
+        validated_data = self._apply_full_name(validated_data)
         role = validated_data.pop('role')
         phone = validated_data.pop('phone', '')
+        branch_shop = validated_data.pop('branch_shop', '')
         password = validated_data.pop('password')
         business = self.context['business']
         user = User.objects.create_user(password=password, **validated_data)
-        UserProfile.objects.create(user=user, business=business, role=role, phone=phone)
+        UserProfile.objects.create(
+            user=user,
+            business=business,
+            role=role,
+            phone=phone,
+            branch_shop=branch_shop,
+        )
         return user
 
     @transaction.atomic
     def update(self, instance, validated_data):
+        validated_data = self._apply_full_name(validated_data)
         role = validated_data.pop('role', None)
         phone = validated_data.pop('phone', None)
+        branch_shop = validated_data.pop('branch_shop', None)
         password = validated_data.pop('password', None)
 
         for field, value in validated_data.items():
@@ -159,5 +185,7 @@ class ManagedUserSerializer(serializers.ModelSerializer):
             profile.role = role
         if phone is not None:
             profile.phone = phone
+        if branch_shop is not None:
+            profile.branch_shop = branch_shop
         profile.save()
         return instance

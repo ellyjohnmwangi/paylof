@@ -7,7 +7,7 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from django.db.models import Count, F, Sum
-from django.db.models.functions import TruncDate
+from django.db.models.functions import ExtractHour, TruncDate
 from django.db import transaction
 from django.utils import timezone
 from django.utils.dateparse import parse_date
@@ -17,7 +17,7 @@ from payments.services import MpesaConfigurationError, MpesaRequestError, start_
 from users.permissions import CanSell, CanViewReports, HasBusinessProfile
 from .models import Sale, SaleItem
 from .serializers import SaleSerializer, SaleCreateSerializer
-from products.models import Product, StockMovement
+from products.models import Expense, Product, StockMovement
 
 class SaleViewSet(viewsets.ModelViewSet):
     http_method_names = ['get', 'post', 'head', 'options']
@@ -120,6 +120,7 @@ class SaleViewSet(viewsets.ModelViewSet):
         ).values('product__name').annotate(
             quantity_sold=Sum('quantity'),
             revenue=Sum('price'),
+            gross_profit=Sum('gross_profit'),
         ).order_by('-quantity_sold')[:5]
         low_stock_count = Product.objects.filter(
             business=request.user.profile.business,
@@ -131,6 +132,9 @@ class SaleViewSet(viewsets.ModelViewSet):
             'subtotal': totals['subtotal'] or Decimal('0.00'),
             'transaction_fees': totals['transaction_fees'] or Decimal('0.00'),
             'total_collected': totals['total_collected'] or Decimal('0.00'),
+            'gross_profit': SaleItem.objects.filter(sale__in=paid_sales).aggregate(
+                total=Sum('gross_profit')
+            )['total'] or Decimal('0.00'),
             'today': {
                 'sales_count': today_sales.count(),
                 'subtotal': today_totals['subtotal'] or Decimal('0.00'),
@@ -165,14 +169,37 @@ class SaleViewSet(viewsets.ModelViewSet):
             else Decimal('0.00')
         )
         sale_items = SaleItem.objects.filter(sale__in=sales)
+        gross_profit = sale_items.aggregate(total=Sum('gross_profit'))['total'] or Decimal('0.00')
+        total_expenses = Expense.objects.filter(
+            business=request.user.profile.business,
+            expense_date__gte=start_date,
+            expense_date__lte=end_date,
+        ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+        net_profit = gross_profit - total_expenses
         product_rows = sale_items.values('product__name').annotate(
             quantity_sold=Sum('quantity'),
             revenue=Sum('price'),
+            gross_profit=Sum('gross_profit'),
         )
         payment_rows = sales.values('payment_method').annotate(
             total_sales_amount=Sum('total_amount'),
             number_of_transactions=Count('id'),
         ).order_by('payment_method')
+        best_selling_hours = list(sales.annotate(hour=ExtractHour('created_at')).values('hour').annotate(
+            total_sales_amount=Sum('total_amount'),
+            number_of_transactions=Count('id'),
+        ).order_by('-number_of_transactions', '-total_sales_amount')[:5])
+        days_in_range = max((end_date - start_date).days + 1, 1)
+        forecast_next_7_days = (total_sales_amount / days_in_range) * 7
+        stock_value = sum(
+            (product.stock_value for product in Product.objects.filter(business=request.user.profile.business)),
+            start=Decimal('0.00'),
+        )
+        sold_product_ids = sale_items.values('product_id')
+        dead_stock = Product.objects.filter(
+            business=request.user.profile.business,
+            stock__gt=0,
+        ).exclude(id__in=sold_product_ids).order_by('name')[:5]
 
         return Response({
             'report_type': report_type,
@@ -181,10 +208,49 @@ class SaleViewSet(viewsets.ModelViewSet):
             'total_sales_amount': total_sales_amount,
             'number_of_transactions': number_of_transactions,
             'average_transaction_value': average_transaction_value,
+            'gross_profit': gross_profit,
+            'total_expenses': total_expenses,
+            'net_profit': net_profit,
+            'stock_value': stock_value,
+            'best_selling_hours': best_selling_hours,
+            'sales_forecast_next_7_days': forecast_next_7_days,
+            'dead_stock': [
+                {
+                    'product__name': product.name,
+                    'quantity_available': product.stock,
+                    'stock_value': product.stock_value,
+                }
+                for product in dead_stock
+            ],
             'best_selling_products': list(product_rows.order_by('-quantity_sold', '-revenue')[:5]),
             'slow_selling_products': list(product_rows.order_by('quantity_sold', 'revenue')[:5]),
             'cash_vs_mpesa_sales': self._payment_breakdown(payment_rows),
             'breakdown': self._report_breakdown(report_type, sales, sale_items),
+        })
+
+    @action(detail=True, methods=['get'])
+    def receipt(self, request, pk=None):
+        sale = self.get_queryset().get(pk=pk)
+        return Response({
+            'business_name': sale.business.name if sale.business else '',
+            'sale_id': sale.id,
+            'cashier_name': sale.user.username,
+            'payment_method': sale.get_payment_method_display(),
+            'payment_status': sale.get_payment_status_display(),
+            'transaction_fee': sale.transaction_fee,
+            'subtotal_amount': sale.subtotal_amount,
+            'total_amount': sale.total_amount,
+            'customer_phone': sale.customer_phone,
+            'mpesa_receipt_number': sale.mpesa_receipt_number,
+            'created_at': sale.created_at,
+            'items': [
+                {
+                    'product_name': item.product.name,
+                    'quantity': item.quantity,
+                    'line_total': item.price,
+                }
+                for item in sale.items.select_related('product')
+            ],
         })
 
     def _get_existing_offline_sale(self, offline_reference):
@@ -228,7 +294,9 @@ class SaleViewSet(viewsets.ModelViewSet):
 
                 line_total = product.price * quantity
                 subtotal_amount += line_total
-                prepared_items.append((product, quantity, line_total))
+                unit_cost = product.cost_price
+                gross_profit = line_total - (unit_cost * quantity)
+                prepared_items.append((product, quantity, line_total, unit_cost, gross_profit))
 
             if stock_errors:
                 return None, Response(
@@ -256,12 +324,14 @@ class SaleViewSet(viewsets.ModelViewSet):
                 offline_reference=offline_reference,
             )
 
-            for product, quantity, line_total in prepared_items:
+            for product, quantity, line_total, unit_cost, gross_profit in prepared_items:
                 SaleItem.objects.create(
                     sale=sale,
                     product=product,
                     quantity=quantity,
                     price=line_total,
+                    unit_cost=unit_cost,
+                    gross_profit=gross_profit,
                 )
 
                 product.stock -= quantity

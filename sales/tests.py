@@ -48,7 +48,7 @@ class CreateSaleTests(TestCase):
             payment_reference='RPTTEST',
         )
 
-    def test_create_sale_applies_transaction_fee_and_updates_stock(self):
+    def test_create_sale_uses_subtotal_total_and_updates_stock(self):
         response = self.client.post(
             '/api/sales/create_sale/',
             {
@@ -60,8 +60,8 @@ class CreateSaleTests(TestCase):
 
         self.assertEqual(response.status_code, 201)
         self.assertEqual(Decimal(response.data['subtotal_amount']), Decimal('100.00'))
-        self.assertEqual(Decimal(response.data['transaction_fee']), Decimal('2.00'))
-        self.assertEqual(Decimal(response.data['total_amount']), Decimal('102.00'))
+        self.assertEqual(Decimal(response.data['transaction_fee']), Decimal('0.00'))
+        self.assertEqual(Decimal(response.data['total_amount']), Decimal('100.00'))
 
         self.product.refresh_from_db()
         self.assertEqual(self.product.stock, 8)
@@ -127,5 +127,5 @@ class CreateSaleTests(TestCase):
 
         self.assertEqual(manager_response.status_code, 200)
         self.assertEqual(manager_response.data['number_of_transactions'], 1)
-        self.assertEqual(Decimal(manager_response.data['total_sales_amount']), Decimal('102.00'))
+        self.assertEqual(Decimal(manager_response.data['total_sales_amount']), Decimal('100.00'))
         self.assertIn('cash', manager_response.data['cash_vs_mpesa_sales'])

@@ -39,18 +39,24 @@ class AuthAndRoleTests(TestCase):
         response = self.client.post(
             '/api/users/',
             {
+                'full_name': 'New Cashier',
                 'username': 'newcashier',
                 'password': 'password123',
                 'email': 'new@example.com',
                 'role': UserProfile.ROLE_CASHIER,
                 'phone': '0711000000',
+                'branch_shop': 'Main Shop',
                 'is_active': True,
             },
             format='json',
         )
 
         self.assertEqual(response.status_code, 201)
-        self.assertTrue(User.objects.filter(username='newcashier').exists())
+        user = User.objects.get(username='newcashier')
+        self.assertEqual(user.get_full_name(), 'New Cashier')
+        self.assertEqual(user.profile.phone, '0711000000')
+        self.assertEqual(user.profile.branch_shop, 'Main Shop')
+        self.assertTrue(user.is_active)
 
     def test_owner_can_generate_password_reset_link(self):
         self.client.force_authenticate(self.owner)

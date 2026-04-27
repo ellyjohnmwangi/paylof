@@ -6,7 +6,7 @@ class SaleItemSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = SaleItem
-        fields = ['id', 'product', 'product_name', 'quantity', 'price']
+        fields = ['id', 'product', 'product_name', 'quantity', 'price', 'unit_cost', 'gross_profit']
 
 class SaleSerializer(serializers.ModelSerializer):
     items = SaleItemSerializer(many=True, read_only=True)

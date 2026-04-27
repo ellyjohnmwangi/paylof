@@ -5,7 +5,7 @@ from .models import Sale, SaleItem
 class SaleItemInline(admin.TabularInline):
     model = SaleItem
     extra = 0
-    readonly_fields = ('product', 'quantity', 'price')
+    readonly_fields = ('product', 'quantity', 'price', 'unit_cost', 'gross_profit')
 
 
 @admin.register(Sale)
@@ -28,5 +28,5 @@ class SaleAdmin(admin.ModelAdmin):
 
 @admin.register(SaleItem)
 class SaleItemAdmin(admin.ModelAdmin):
-    list_display = ('sale', 'product', 'quantity', 'price')
+    list_display = ('sale', 'product', 'quantity', 'price', 'unit_cost', 'gross_profit')
     search_fields = ('product__name', 'sale__id')

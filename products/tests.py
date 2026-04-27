@@ -1,12 +1,13 @@
 from datetime import timedelta
 
 from django.contrib.auth.models import User
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 
 from payments.models import ReportSubscription
-from .models import Product, StockMovement
+from .models import Distributor, Product, StockMovement
 from users.models import Business, UserProfile
 
 
@@ -69,6 +70,74 @@ class InventoryPermissionTests(TestCase):
             },
             format='json',
         )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_manager_can_import_products_from_csv(self):
+        self.client.force_authenticate(self.manager)
+        csv_file = SimpleUploadedFile(
+            'products.csv',
+            b'name,price,cost_price,stock,low_stock_threshold,distributor\nBread,50,35,12,4,Nairobi Wholesale\nMilk,70,55,8,3,Nairobi Wholesale\n',
+            content_type='text/csv',
+        )
+
+        response = self.client.post('/api/products/import-csv/', {'file': csv_file}, format='multipart')
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data['created'], 2)
+        self.assertEqual(Product.objects.filter(business=self.business).count(), 2)
+        bread = Product.objects.get(business=self.business, name='Bread')
+        self.assertEqual(bread.stock, 12)
+        self.assertEqual(str(bread.cost_price), '35.00')
+        self.assertEqual(bread.distributor.name, 'Nairobi Wholesale')
+        self.assertTrue(
+            StockMovement.objects.filter(
+                product=bread,
+                movement_type=StockMovement.TYPE_ADDED,
+                quantity=12,
+                note='CSV product import',
+            ).exists()
+        )
+
+    def test_cashier_cannot_import_products_from_csv(self):
+        self.client.force_authenticate(self.cashier)
+        csv_file = SimpleUploadedFile(
+            'products.csv',
+            b'name,price\nBread,50\n',
+            content_type='text/csv',
+        )
+
+        response = self.client.post('/api/products/import-csv/', {'file': csv_file}, format='multipart')
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_manager_can_import_distributors_from_csv(self):
+        self.client.force_authenticate(self.manager)
+        csv_file = SimpleUploadedFile(
+            'distributors.csv',
+            b'name,contact_person,phone,email,location,notes\nNairobi Wholesale,John Mwangi,254712345678,orders@example.com,Industrial Area,Supplies dry goods\n',
+            content_type='text/csv',
+        )
+
+        response = self.client.post('/api/distributors/import-csv/', {'file': csv_file}, format='multipart')
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data['created'], 1)
+        distributor = Distributor.objects.get(business=self.business, name='Nairobi Wholesale')
+        self.assertEqual(distributor.contact_person, 'John Mwangi')
+        self.assertEqual(distributor.phone, '254712345678')
+        self.assertEqual(distributor.email, 'orders@example.com')
+        self.assertEqual(distributor.location, 'Industrial Area')
+
+    def test_cashier_cannot_import_distributors_from_csv(self):
+        self.client.force_authenticate(self.cashier)
+        csv_file = SimpleUploadedFile(
+            'distributors.csv',
+            b'name,phone\nNairobi Wholesale,254712345678\n',
+            content_type='text/csv',
+        )
+
+        response = self.client.post('/api/distributors/import-csv/', {'file': csv_file}, format='multipart')
 
         self.assertEqual(response.status_code, 403)
 
